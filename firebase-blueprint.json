@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "BrailleStreamChunk": {
+      "title": "BrailleStreamChunk",
+      "description": "Represents a chunk of maximum 3 braille characters sent to the display mechanism.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The raw text characters representing this chunk"
+        },
+        "braille": {
+          "type": "string",
+          "description": "The braille representation of this chunk"
+        },
+        "createdAt": {
+          "type": "timestamp"
+        }
+      },
+      "required": ["text", "braille", "createdAt"]
+    }
+  },
+  "firestore": {
+    "braille_stream": {
+      "schema": {
+        "$ref": "BrailleStreamChunk"
+      },
+      "description": "Collection for streaming braille characters sequentially."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "AccessiDash",
+  "description": "A high-contrast student dashboard for visually impaired students featuring a voice-activated AI assistant to read schedules, assignments, and announcements out loud.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
