@@ -2,13 +2,284 @@
 
 import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Mic, MicOff, Volume2, BookOpen, Clock, AlertCircle, Bluetooth, BluetoothConnected, X, Loader2, Send, ArrowLeft, Cpu } from "lucide-react";
+import { Mic, MicOff, Volume2, BookOpen, Clock, AlertCircle, Bluetooth, BluetoothConnected, X, Loader2, Send, ArrowLeft, Cpu, Languages } from "lucide-react";
 import { ref, set, serverTimestamp } from "firebase/database";
 import { rtdb } from "./firebase";
 import ESP32GuideModal from "./ESP32GuideModal";
 
 // Initialize Gemini API
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyBynSGuocCzlhzZwBdCDIubEwo45Y67vus" || process.env.GEMINI_API_KEY || "" });
+const apiKey = process.env.GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
+const ai = new GoogleGenAI({ 
+  apiKey,
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
+    }
+  }
+});
+
+// English (Tanglish) to Tamil phonetic transliteration dictionary
+const TAMIL_DICTIONARY: Record<string, string> = {
+  vanakkam: "வணக்கம்",
+  vanakam: "வணக்கம்",
+  nandri: "நன்றி",
+  nanri: "நன்றி",
+  amma: "அம்மா",
+  appa: "அப்பா",
+  tamil: "தமிழ்",
+  tamizh: "தமிழ்",
+  thambi: "தம்பி",
+  thangai: "தங்கை",
+  thangachi: "தங்கச்சி",
+  akka: "அக்கா",
+  anna: "அண்ணா",
+  eppadi: "எப்படி",
+  epdi: "எப்படி",
+  irukinga: "இருக்கீங்க",
+  irukkeenga: "இருக்கீங்க",
+  irukireergal: "இருக்கிறீர்கள்",
+  irukiren: "இருக்கிறேன்",
+  nalla: "நல்ல",
+  nalladhu: "நல்லது",
+  nalam: "நலம்",
+  seri: "சரி",
+  aam: "ஆம்",
+  illai: "இல்லை",
+  illa: "இல்லை",
+  aama: "ஆமாம்",
+  aamam: "ஆமாம்",
+  enakku: "எனக்கு",
+  unaku: "உனக்கு",
+  unakku: "உனக்கு",
+  ungalukku: "உங்களுக்கு",
+  enna: "என்ன",
+  edhu: "எது",
+  enge: "எங்கே",
+  engu: "எங்கு",
+  eppozhudhu: "எப்பொழுது",
+  eppodhu: "எப்போது",
+  yaar: "யார்",
+  evvalavu: "எவ்வளவு",
+  pesu: "பேசு",
+  kelvi: "கேள்வி",
+  padhil: "பதில்",
+  badhil: "பதில்",
+  sol: "சொல்",
+  solla: "சொல்ல",
+  solreenga: "சொல்றீங்க",
+  kalvi: "கல்வி",
+  palli: "பள்ளி",
+  paadam: "பாடம்",
+  padam: "பாடம்",
+  puthagam: "புத்தகம்",
+  pusthagam: "புத்தகம்",
+  manavan: "மாணவன்",
+  manavi: "மாணவி",
+  neram: "நேரம்",
+  kaalai: "காலை",
+  kalai: "காலை",
+  maalai: "மாலை",
+  malai: "மாலை",
+  iravu: "இரவு",
+  indru: "இன்று",
+  naalai: "நாளை",
+  nalai: "நாளை",
+  netru: "நேற்று",
+  naan: "நான்",
+  nan: "நான்",
+  nee: "நீ",
+  neenga: "நீங்க",
+  neengal: "நீங்கள்",
+  naangal: "நாங்கள்",
+  avargal: "அவர்கள்",
+  avan: "அவன்",
+  aval: "அவள்",
+  adhu: "அது",
+  idhu: "இது",
+  oru: "ஒரு",
+  romba: "ரொம்ப",
+  konjam: "கொஞ்சம்",
+  velai: "வேலை",
+  veedu: "வீடு",
+  mudiyum: "முடியும்",
+  mudiyadhu: "முடியாது",
+  theriyum: "தெரியும்",
+  theriyadhu: "தெரியாது",
+  vaanga: "வாங்க",
+  ponga: "போங்க",
+  padikka: "படிக்க",
+  eludha: "எழுத",
+  eluthu: "எழுத்து",
+  braille: "பிரெய்லி",
+};
+
+const INDEP_VOWELS: [string, string][] = [
+  ["aai", "ஆய்"], ["aau", "ஆவ்"],
+  ["aa", "ஆ"], ["ii", "ஈ"], ["ee", "ஈ"],
+  ["uu", "ஊ"], ["oo", "ஊ"],
+  ["ea", "ஏ"], ["ae", "ஏ"],
+  ["ai", "ஐ"], ["au", "ஔ"], ["ou", "ஔ"],
+  ["oa", "ஓ"],
+  ["a", "அ"], ["i", "இ"], ["u", "உ"],
+  ["e", "எ"], ["o", "ஒ"]
+];
+
+const VOWEL_SIGNS: [string, string][] = [
+  ["aai", "ாய்"], ["aau", "ாவ்"],
+  ["aa", "ா"], ["ii", "ீ"], ["ee", "ீ"],
+  ["uu", "ூ"], ["oo", "ூ"],
+  ["ea", "ே"], ["ae", "ே"],
+  ["ai", "ை"], ["au", "ௌ"], ["ou", "ௌ"],
+  ["oa", "ோ"],
+  ["a", ""],
+  ["i", "ி"], ["u", "ு"],
+  ["e", "ெ"], ["o", "ொ"]
+];
+
+const CONSONANTS: [string, string][] = [
+  ["ksha", "க்ஷ"], ["ksh", "க்ஷ"],
+  ["thth", "த்த"], ["dhth", "த்த"],
+  ["chch", "ச்ச"], ["shsh", "ஷ்ஷ"],
+  ["th", "த"], ["dh", "த"],
+  ["zh", "ழ"],
+  ["sh", "ஷ"],
+  ["ch", "ச"],
+  ["ng", "ங"],
+  ["nj", "ஞ"], ["ny", "ஞ"], ["gn", "ஞ"],
+  ["kk", "க்க"], ["pp", "ப்ப"], ["tt", "ட்ட"],
+  ["ll", "ள"], ["rr", "ற"], ["nn", "ண"],
+  ["k", "க"], ["g", "க"],
+  ["c", "ச"], ["s", "ச"],
+  ["t", "ட"], ["d", "ட"],
+  ["p", "ப"], ["b", "ப"],
+  ["m", "ம"],
+  ["y", "ய"],
+  ["r", "ர"],
+  ["l", "ல"],
+  ["v", "வ"], ["w", "வ"],
+  ["z", "ழ"],
+  ["h", "ஹ"],
+  ["j", "ஜ"],
+  ["n", "ன"]
+];
+
+function transliterateEnglishToken(token: string): string {
+  const lower = token.toLowerCase();
+  if (TAMIL_DICTIONARY[lower]) return TAMIL_DICTIONARY[lower];
+
+  let res = "";
+  let i = 0;
+  const n = token.length;
+
+  while (i < n) {
+    const sub = lower.slice(i);
+
+    // 1. Try consonant
+    let cMatch: [string, string] | null = null;
+    for (const c of CONSONANTS) {
+      if (sub.startsWith(c[0])) {
+        cMatch = c;
+        break;
+      }
+    }
+
+    if (cMatch) {
+      const [cKey, cBase] = cMatch;
+      let base = cBase;
+      if (cKey === "n" && i === 0) {
+        base = "ந";
+      }
+
+      const rest = sub.slice(cKey.length);
+      let vMatch: [string, string] | null = null;
+      for (const v of VOWEL_SIGNS) {
+        if (rest.startsWith(v[0])) {
+          vMatch = v;
+          break;
+        }
+      }
+
+      if (vMatch) {
+        res += base + vMatch[1];
+        i += cKey.length + vMatch[0].length;
+      } else {
+        res += base + "\u0BCD";
+        i += cKey.length;
+      }
+      continue;
+    }
+
+    // 2. Try independent vowel
+    let vIndep: [string, string] | null = null;
+    for (const v of INDEP_VOWELS) {
+      if (sub.startsWith(v[0])) {
+        vIndep = v;
+        break;
+      }
+    }
+
+    if (vIndep) {
+      res += vIndep[1];
+      i += vIndep[0].length;
+      continue;
+    }
+
+    // Default: keep character
+    res += token[i];
+    i++;
+  }
+
+  return res;
+}
+
+function transliterateToTamil(input: string): string {
+  if (!input) return "";
+
+  const VOWEL_REPLACEMENTS: Record<string, string> = {
+    "aa": "ா", "a": "",
+    "ii": "ீ", "ee": "ீ", "i": "ி",
+    "uu": "ூ", "oo": "ூ", "u": "ு",
+    "ea": "ே", "ae": "ே", "e": "ெ",
+    "ai": "ை",
+    "oa": "ோ", "o": "ொ",
+    "au": "ௌ", "ou": "ௌ",
+  };
+
+  let str = input;
+
+  // Handle multi-character vowels following Tamil virama (\u0BCD)
+  str = str.replace(/(\u0BCD)(aa|ii|ee|uu|oo|ea|ae|ai|oa|au|ou)/gi, (_, __, v) => {
+    return VOWEL_REPLACEMENTS[v.toLowerCase()] ?? "";
+  });
+
+  // Handle single-character vowels following Tamil virama (\u0BCD)
+  str = str.replace(/(\u0BCD)([aeiou])/gi, (_, __, v) => {
+    return VOWEL_REPLACEMENTS[v.toLowerCase()] ?? "";
+  });
+
+  // Handle consonant digraphs when user types English letters after a virama consonant
+  str = str.replace(/ட்h/gi, "த்");
+  str = str.replace(/த்h/gi, "த்");
+  str = str.replace(/ஸ்h/gi, "ஷ்");
+  str = str.replace(/ச்h/gi, "ச்");
+  str = str.replace(/ன்g/gi, "ங்");
+  str = str.replace(/ந்g/gi, "ங்");
+  str = str.replace(/ன்j/gi, "ஞ்");
+  str = str.replace(/ழ்h/gi, "ழ்");
+  str = str.replace(/க்sh/gi, "க்ஷ்");
+
+  // Handle vowel extensions on non-virama consonants
+  str = str.replace(/([\u0B95-\u0BB9])a/gi, "$1ா");
+  str = str.replace(/([\u0B95-\u0BB9])i/gi, "$1ை");
+  str = str.replace(/([\u0B95-\u0BB9])u/gi, "$1ௌ");
+
+  // Transliterate remaining English word sequences
+  str = str.replace(/[a-zA-Z]+/g, (match) => {
+    return transliterateEnglishToken(match);
+  });
+
+  return str;
+}
 
 const textToBraille = (text: string) => {
   const brailleMap: Record<string, string> = {
@@ -17,7 +288,20 @@ const textToBraille = (text: string) => {
     u: "⠥", v: "⠧", w: "⠺", x: "⠭", y: "⠽", z: "⠵",
     " ": " ", ",": "⠂", ";": "⠆", ":": "⠒", ".": "⠲", "!": "⠖", "?": "⠦",
     "1": "⠼⠁", "2": "⠼⠃", "3": "⠼⠉", "4": "⠼⠙", "5": "⠼⠑",
-    "6": "⠼⠋", "7": "⠼⠛", "8": "⠼⠓", "9": "⠼⠊", "0": "⠼⠚"
+    "6": "⠼⠋", "7": "⠼⠛", "8": "⠼⠓", "9": "⠼⠊", "0": "⠼⠚",
+    // Tamil Bharati Braille vowels & aytham
+    "அ": "⠁", "ஆ": "⠜", "இ": "⠊", "ஈ": "⠔", "உ": "⠥", "ஊ": "⠱",
+    "எ": "⠑", "ஏ": "⠢", "ஐ": "⠌", "ஒ": "⠕", "ஓ": "⠹", "ஔ": "⠪",
+    "ஃ": "⠠",
+    // Tamil consonants
+    "க": "⠅", "ங": "⠬", "ச": "⠉", "ஞ": "⠒", "ட": "⠾", "ண": "⠼",
+    "த": "⠞", "ந": "⠝", "ப": "⠏", "ம": "⠍", "ய": "⠽", "ர": "⠗",
+    "ல": "⠇", "வ": "⠧", "ழ": "⠷", "ள": "⠸", "ற": "⠻", "ன": "⠰",
+    "ஜ": "⠚", "ஷ": "⠯", "ஸ": "⠎", "ஹ": "⠓",
+    // Tamil combining vowel signs & pulli
+    "ா": "⠜", "ி": "⠊", "ீ": "⠔", "ு": "⠥", "ூ": "⠱",
+    "ெ": "⠑", "ே": "⠢", "ை": "⠌", "ொ": "⠕", "ோ": "⠹", "ௌ": "⠪",
+    "்": "⠈"
   };
   return text.toLowerCase().split('').map(char => brailleMap[char] || char).join('');
 };
@@ -25,12 +309,21 @@ const textToBraille = (text: string) => {
 function BrailleChat({ onBack }: { onBack: () => void }) {
   const [messages, setMessages] = useState<{id: string, role: 'user'|'model', text: string, highlightIndex?: number}[]>([]);
   const [input, setInput] = useState("");
+  const [chatLanguage, setChatLanguage] = useState<"en" | "ta">("ta");
   const [isLoading, setIsLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleInputChange = (rawVal: string) => {
+    if (chatLanguage === "ta") {
+      setInput(transliterateToTamil(rawVal));
+    } else {
+      setInput(rawVal);
+    }
+  };
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -43,8 +336,13 @@ function BrailleChat({ onBack }: { onBack: () => void }) {
     setIsLoading(true);
 
     try {
+      const isTamil = chatLanguage === "ta";
+      const systemInstruction = isTamil
+        ? "You are a helpful assistant talking to a visually impaired student using a Braille display. Keep your answers brief, clear, and direct. Respond in Tamil. Do not use complex formatting (like markdown) that is hard to read in Braille."
+        : "You are a helpful assistant talking to a visually impaired student using a Braille display. Keep your answers brief, clear, and direct. Do not use complex formatting (like markdown) that is hard to read in Braille.";
+
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash",
         contents: [
           ...messages.map(m => ({
             role: m.role,
@@ -53,11 +351,11 @@ function BrailleChat({ onBack }: { onBack: () => void }) {
           { role: "user", parts: [{ text: userText }] }
         ],
         config: {
-          systemInstruction: "You are a helpful assistant talking to a visually impaired student using a Braille display. Keep your answers brief, clear, and direct. Do not use complex formatting (like markdown) that is hard to read in Braille."
+          systemInstruction
         }
       });
       
-      const modelText = response.text || "I didn't quite get that.";
+      const modelText = response.text || (isTamil ? "மன்னிக்கவும், புரிந்து கொள்ள முடியவில்லை." : "I didn't quite get that.");
       const modelMsgId = Date.now().toString() + "-model";
       setMessages(prev => [...prev, {id: modelMsgId, role: 'model', text: modelText, highlightIndex: 0}]);
 
@@ -105,7 +403,10 @@ function BrailleChat({ onBack }: { onBack: () => void }) {
 
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, {id: Date.now().toString() + "-error", role: 'model', text: "Error connecting to AI. Please check your connection."}]);
+      const errMsg = chatLanguage === "ta" 
+        ? "AI உடன் இணைப்பதில் பிழை ஏற்பட்டது. தயவுசெய்து மீண்டும் முயற்சிக்கவும்." 
+        : "Error connecting to AI. Please check your connection.";
+      setMessages(prev => [...prev, {id: Date.now().toString() + "-error", role: 'model', text: errMsg}]);
     } finally {
       setIsLoading(false);
     }
@@ -127,9 +428,25 @@ function BrailleChat({ onBack }: { onBack: () => void }) {
             <p className="text-xs md:text-sm text-zinc-400 font-medium">Device connected</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-zinc-800/80 border border-zinc-700 text-xs md:text-sm font-medium text-emerald-400">
-           <BluetoothConnected size={16} />
-           <span className="hidden md:inline">Synced</span>
+        <div className="flex items-center gap-3">
+          {/* Language Switch Button */}
+          <button
+            type="button"
+            onClick={() => setChatLanguage(prev => prev === 'en' ? 'ta' : 'en')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 md:px-4 md:py-2 rounded-full border text-xs md:text-sm font-bold uppercase tracking-wider transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-white ${
+              chatLanguage === 'ta' 
+                ? 'bg-amber-400 text-black border-amber-300 hover:bg-amber-300' 
+                : 'bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700'
+            }`}
+            aria-label={`Language: ${chatLanguage === 'ta' ? 'Tamil' : 'English'}. Click to switch.`}
+          >
+            <Languages size={16} />
+            <span className="font-black">{chatLanguage === 'ta' ? 'தமிழ்' : 'English'}</span>
+          </button>
+          <div className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-zinc-800/80 border border-zinc-700 text-xs md:text-sm font-medium text-emerald-400">
+             <BluetoothConnected size={16} />
+             <span className="hidden md:inline">Synced</span>
+          </div>
         </div>
       </header>
 
@@ -141,7 +458,11 @@ function BrailleChat({ onBack }: { onBack: () => void }) {
                  <BluetoothConnected size={40} className="text-zinc-500" />
               </div>
               <p className="text-xl md:text-2xl font-semibold tracking-tight">Seamless Braille Chat</p>
-              <p className="text-sm md:text-base mt-2 max-w-sm">Type text here to simulate input from your refreshable Braille display.</p>
+              <p className="text-sm md:text-base mt-2 max-w-sm">
+                {chatLanguage === 'ta' 
+                  ? 'Type in English (phonetic) to generate Tamil text & Bharati Braille for your display.' 
+                  : 'Type text here to simulate input from your refreshable Braille display.'}
+              </p>
             </div>
           )}
           {messages.map((msg) => (
@@ -194,12 +515,26 @@ function BrailleChat({ onBack }: { onBack: () => void }) {
       <footer className="w-full bg-zinc-950/80 backdrop-blur-md border-t border-zinc-900 p-4 md:p-6 flex-shrink-0">
         <div className="max-w-4xl mx-auto">
           <form onSubmit={handleSend} className="relative flex items-center">
+            {/* Quick in-input language toggle button */}
+            <button
+              type="button"
+              onClick={() => setChatLanguage(prev => prev === 'en' ? 'ta' : 'en')}
+              className={`absolute left-2 z-10 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wider transition-all border ${
+                chatLanguage === 'ta'
+                  ? 'bg-amber-400 text-black border-amber-300 shadow-sm'
+                  : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+              }`}
+              title="Click to toggle Tamil and English input"
+              aria-label={`Switch language. Current: ${chatLanguage === 'ta' ? 'Tamil' : 'English'}`}
+            >
+              {chatLanguage === 'ta' ? 'தமிழ்' : 'EN'}
+            </button>
             <input 
               type="text" 
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-full py-3 pl-6 pr-14 text-base md:text-lg focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:border-transparent placeholder:text-zinc-600 transition-all shadow-sm"
-              placeholder="Type your message..."
+              onChange={(e) => handleInputChange(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-full py-3 pl-20 pr-14 text-base md:text-lg focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:border-transparent placeholder:text-zinc-500 transition-all shadow-sm"
+              placeholder={chatLanguage === 'ta' ? "Type in English (shows தமிழ் in real-time)..." : "Type your message in English..."}
               disabled={isLoading}
               autoFocus
             />
@@ -211,7 +546,14 @@ function BrailleChat({ onBack }: { onBack: () => void }) {
               <Send size={20} className="ml-0.5" />
             </button>
           </form>
-          <p className="text-center text-xs font-medium text-zinc-600 mt-3 hidden md:block">Prototype Mode / Braille Translation active</p>
+          <div className="flex items-center justify-between text-xs font-medium text-zinc-500 mt-2.5 px-2">
+            <span>
+              {chatLanguage === 'ta' 
+                ? 'தமிழ் Active: Type phonetically in English (e.g., "vanakkam", "epdi irukinga", "tamil")' 
+                : 'English Active: Direct typing'}
+            </span>
+            <span className="hidden md:inline">Bharati Braille Translation Active</span>
+          </div>
         </div>
       </footer>
     </div>
@@ -310,7 +652,7 @@ export default function App() {
       nextPlayTimeRef.current = audioContext.currentTime;
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
+        model: "gemini-3.8-live",
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
